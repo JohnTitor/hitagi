@@ -40,7 +40,7 @@ impl Default for Config {
 impl Config {
     pub fn update_from_settings(&mut self, settings: &Value) {
         let root = if let Some(obj) = settings.as_object() {
-            if let Some(inner) = obj.get("stapler") {
+            if let Some(inner) = obj.get("hitagi") {
                 inner
             } else {
                 settings

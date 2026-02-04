@@ -1,4 +1,4 @@
-# stapler
+# hitagi /hi.ta.ɡi/
 
 A minimalist Rust language server focused on low memory/CPU usage. Current features:
 
@@ -15,12 +15,12 @@ cargo build --release
 ## Run
 
 ```bash
-./target/release/stapler
+./target/release/hitagi
 ```
 
 ## Configuration
 
-Settings are read from `stapler` in your LSP client config:
+Settings are read from `hitagi` in your LSP client config:
 
 - `workspaceMode`: `openFilesOnly`
 - `checkOnSave`: `true` or `false`
