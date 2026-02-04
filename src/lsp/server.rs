@@ -8,9 +8,9 @@ use std::thread;
 use lsp_types::{
     notification, request, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Uri, WorkspaceServerCapabilities,
-    WorkspaceFoldersServerCapabilities,
+    InitializeParams, InitializeResult, InitializedParams, SaveOptions, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
+    WorkspaceServerCapabilities, WorkspaceFoldersServerCapabilities,
 };
 use lsp_types::notification::Notification;
 use lsp_types::request::Request;
@@ -200,7 +200,15 @@ impl State {
 }
 
 fn initialize_result() -> InitializeResult {
-    let text_document_sync = TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL);
+    let text_document_sync = TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+        open_close: Some(true),
+        change: Some(TextDocumentSyncKind::FULL),
+        save: Some(SaveOptions {
+            include_text: Some(false),
+        }
+        .into()),
+        ..Default::default()
+    });
 
     let capabilities = ServerCapabilities {
         text_document_sync: Some(text_document_sync),
@@ -303,11 +311,13 @@ fn read_message(reader: &mut BufReader<impl Read>) -> io::Result<Option<Value>> 
         if bytes == 0 {
             return Ok(None);
         }
-        if line == "\r\n" {
+        if line.trim().is_empty() {
             break;
         }
-        if let Some(rest) = line.strip_prefix("Content-Length:") {
-            content_length = rest.trim().parse::<usize>().ok();
+        if let Some((name, value)) = line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("Content-Length") {
+                content_length = value.trim().parse::<usize>().ok();
+            }
         }
     }
 
