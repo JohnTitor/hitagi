@@ -54,7 +54,9 @@ fn extract_ident_at(text: &str, offset: usize) -> Option<String> {
         return None;
     }
 
-    std::str::from_utf8(&bytes[start..end]).ok().map(|s| s.to_string())
+    std::str::from_utf8(&bytes[start..end])
+        .ok()
+        .map(|s| s.to_string())
 }
 
 fn is_ident_char(b: u8) -> bool {
@@ -62,7 +64,9 @@ fn is_ident_char(b: u8) -> bool {
 }
 
 fn find_definition(docs: &DocumentStore, ident: &str) -> Option<String> {
-    const KEYWORDS: [&str; 8] = ["fn", "struct", "enum", "type", "const", "mod", "trait", "impl"];
+    const KEYWORDS: [&str; 8] = [
+        "fn", "struct", "enum", "type", "const", "mod", "trait", "impl",
+    ];
 
     for (_uri, doc) in docs.iter() {
         for line in doc.text.lines() {
@@ -75,7 +79,11 @@ fn find_definition(docs: &DocumentStore, ident: &str) -> Option<String> {
 
             for keyword in &KEYWORDS {
                 if let Some(rest) = trimmed.strip_prefix(keyword) {
-                    let is_space = rest.chars().next().map(|c| c.is_whitespace()).unwrap_or(false);
+                    let is_space = rest
+                        .chars()
+                        .next()
+                        .map(|c| c.is_whitespace())
+                        .unwrap_or(false);
                     if !is_space {
                         continue;
                     }
@@ -104,7 +112,12 @@ fn strip_pub_prefix(line: &str) -> &str {
             }
             return rest;
         }
-        if rest.chars().next().map(|c| c.is_whitespace()).unwrap_or(false) {
+        if rest
+            .chars()
+            .next()
+            .map(|c| c.is_whitespace())
+            .unwrap_or(false)
+        {
             return rest.trim_start();
         }
         return trimmed;
@@ -115,7 +128,9 @@ fn strip_pub_prefix(line: &str) -> &str {
 
 fn take_ident(s: &str) -> Option<String> {
     let mut chars = s.char_indices();
-    let Some((idx, first)) = chars.next() else { return None; };
+    let Some((idx, first)) = chars.next() else {
+        return None;
+    };
     if !(first == '_' || first.is_ascii_alphabetic()) {
         return None;
     }

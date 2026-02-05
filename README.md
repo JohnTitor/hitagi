@@ -5,6 +5,7 @@ A minimalist Rust language server focused on low memory/CPU usage. Current featu
 - Hover from open files only
 - Diagnostics via `cargo check` on save
 - Full text sync
+- Inlay hints for local types, argument names, const generics, and chained expressions
 
 ## Build
 

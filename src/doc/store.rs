@@ -33,13 +33,7 @@ impl DocumentStore {
             doc.text = text;
             doc.version = version;
         } else {
-            self.docs.insert(
-                uri,
-                Document {
-                    text,
-                    version,
-                },
-            );
+            self.docs.insert(uri, Document { text, version });
         }
     }
 

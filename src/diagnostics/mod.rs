@@ -38,7 +38,10 @@ pub fn run_check(root: &Path, command: &[String]) -> Result<HashMap<Uri, Vec<Dia
             None => continue,
         };
 
-        let level = message.get("level").and_then(|v| v.as_str()).unwrap_or("error");
+        let level = message
+            .get("level")
+            .and_then(|v| v.as_str())
+            .unwrap_or("error");
         let msg_text = message
             .get("message")
             .and_then(|v| v.as_str())
@@ -61,7 +64,9 @@ pub fn run_check(root: &Path, command: &[String]) -> Result<HashMap<Uri, Vec<Dia
 
         let start = lsp_position_from_span(
             span.get("line_start").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-            span.get("column_start").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
+            span.get("column_start")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as u32,
         );
         let end = lsp_position_from_span(
             span.get("line_end").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
@@ -116,6 +121,10 @@ fn map_severity(level: &str) -> Option<DiagnosticSeverity> {
 
 fn uri_from_file(root: &Path, file_name: &str) -> Option<Uri> {
     let path = PathBuf::from(file_name);
-    let full = if path.is_absolute() { path } else { root.join(path) };
+    let full = if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    };
     path_to_uri(&full)
 }

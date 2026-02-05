@@ -1,26 +1,27 @@
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::Arc;
 use std::thread;
 
-use lsp_types::{
-    notification, request, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, SaveOptions, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
-    WorkspaceServerCapabilities, WorkspaceFoldersServerCapabilities,
-};
 use lsp_types::notification::Notification;
 use lsp_types::request::Request;
-use serde_json::{json, Value};
+use lsp_types::{
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, Hover, HoverParams, InitializeParams, InitializeResult,
+    InitializedParams, InlayHint, InlayHintParams, SaveOptions, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
+    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities, notification, request,
+};
+use serde_json::{Value, json};
 
 use crate::config::Config;
 use crate::diagnostics::run_check;
 use crate::doc::store::DocumentStore;
 use crate::doc::uri::uri_to_path;
 use crate::hover::hover as hover_at;
+use crate::inlay::inlay_hints;
 
 pub fn run() {
     let (tx, rx) = mpsc::channel::<String>();
@@ -88,29 +89,44 @@ impl State {
 
     fn handle_request(&mut self, method: &str, id: Value, value: Value) -> bool {
         match method {
-            request::Initialize::METHOD => {
-                match parse_params::<InitializeParams>(&value) {
-                    Ok(params) => {
-                        self.root = extract_root(&params);
-                        let result = initialize_result();
-                        send_response(&self.sender, id, serde_json::to_value(result).unwrap_or(Value::Null));
-                    }
-                    Err(err) => send_error(&self.sender, id, -32602, &err),
+            request::Initialize::METHOD => match parse_params::<InitializeParams>(&value) {
+                Ok(params) => {
+                    self.root = extract_root(&params);
+                    let result = initialize_result();
+                    send_response(
+                        &self.sender,
+                        id,
+                        serde_json::to_value(result).unwrap_or(Value::Null),
+                    );
                 }
-            }
+                Err(err) => send_error(&self.sender, id, -32602, &err),
+            },
             request::Shutdown::METHOD => {
                 self.shutdown = true;
                 send_response(&self.sender, id, Value::Null);
             }
-            request::HoverRequest::METHOD => {
-                match parse_params::<HoverParams>(&value) {
-                    Ok(params) => {
-                        let result = self.handle_hover(params);
-                        send_response(&self.sender, id, serde_json::to_value(result).unwrap_or(Value::Null));
-                    }
-                    Err(err) => send_error(&self.sender, id, -32602, &err),
+            request::HoverRequest::METHOD => match parse_params::<HoverParams>(&value) {
+                Ok(params) => {
+                    let result = self.handle_hover(params);
+                    send_response(
+                        &self.sender,
+                        id,
+                        serde_json::to_value(result).unwrap_or(Value::Null),
+                    );
                 }
-            }
+                Err(err) => send_error(&self.sender, id, -32602, &err),
+            },
+            request::InlayHintRequest::METHOD => match parse_params::<InlayHintParams>(&value) {
+                Ok(params) => {
+                    let result = self.handle_inlay_hints(params);
+                    send_response(
+                        &self.sender,
+                        id,
+                        serde_json::to_value(result).unwrap_or(Value::Null),
+                    );
+                }
+                Err(err) => send_error(&self.sender, id, -32602, &err),
+            },
             _ => {
                 send_error(&self.sender, id, -32601, "method not found");
             }
@@ -197,22 +213,31 @@ impl State {
             diag_running.store(false, Ordering::SeqCst);
         });
     }
+
+    fn handle_inlay_hints(&self, params: InlayHintParams) -> Option<Vec<InlayHint>> {
+        let uri = params.text_document.uri;
+        let range = params.range;
+        Some(inlay_hints(&self.docs, self.root.as_deref(), &uri, range))
+    }
 }
 
 fn initialize_result() -> InitializeResult {
     let text_document_sync = TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
         open_close: Some(true),
         change: Some(TextDocumentSyncKind::FULL),
-        save: Some(SaveOptions {
-            include_text: Some(false),
-        }
-        .into()),
+        save: Some(
+            SaveOptions {
+                include_text: Some(false),
+            }
+            .into(),
+        ),
         ..Default::default()
     });
 
     let capabilities = ServerCapabilities {
         text_document_sync: Some(text_document_sync),
         hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
+        inlay_hint_provider: Some(lsp_types::OneOf::Left(true)),
         workspace: Some(WorkspaceServerCapabilities {
             workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                 supported: Some(true),
@@ -275,7 +300,11 @@ fn send_error(sender: &Sender<String>, id: Value, code: i32, message: &str) {
     send_value(sender, response);
 }
 
-fn publish_diagnostics(sender: &Sender<String>, open_urls: Vec<Uri>, map: std::collections::HashMap<Uri, Vec<lsp_types::Diagnostic>>) {
+fn publish_diagnostics(
+    sender: &Sender<String>,
+    open_urls: Vec<Uri>,
+    map: std::collections::HashMap<Uri, Vec<lsp_types::Diagnostic>>,
+) {
     for uri in open_urls {
         let diagnostics = map.get(&uri).cloned().unwrap_or_default();
         let params = lsp_types::PublishDiagnosticsParams::new(uri, diagnostics, None);
@@ -328,7 +357,8 @@ fn read_message(reader: &mut BufReader<impl Read>) -> io::Result<Option<Value>> 
 
     let mut buf = vec![0u8; length];
     reader.read_exact(&mut buf)?;
-    let value: Value = serde_json::from_slice(&buf).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    let value: Value = serde_json::from_slice(&buf)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
     Ok(Some(value))
 }
 
